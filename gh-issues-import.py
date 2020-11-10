@@ -404,9 +404,8 @@ def import_issues(issues):
 			issue['labels'] = issue_labels
 			del issue['label_objects']
 
-		g = Github('aeb90ca538aa18f9c18d783f127e143a588e86b7')
-		# g = Github('63f7a8622820aa8e132e860b84be3522a0caec46')
-		repo = g.get_repo('fleetdm-importer/import-test-2')
+		g = Github('PAT-TODO')
+		repo = g.get_repo('REPO-TODO')
 		
 		result_issue = send_request('target', "issues", issue)
 		print("Successfully created issue '%s'" % result_issue['title'])
