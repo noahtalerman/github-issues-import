@@ -6,6 +6,10 @@ import base64
 import sys, os
 import datetime
 import argparse, configparser
+import requests
+
+from github import Github
+from pprint import pprint
 
 import query
 
@@ -210,13 +214,13 @@ def send_request(which, url, post_data=None):
 		
 		error_details = error.read();
 		error_details = json.loads(error_details.decode("utf-8"))
-		
 		if error.code in http_error_messages:
 			sys.exit(http_error_messages[error.code])
 		else:
 			error_message = "ERROR: There was a problem importing the issues.\n%s %s" % (error.code, error.reason)
 			if 'message' in error_details:
 				error_message += "\nDETAILS: " + error_details['message']
+
 			sys.exit(error_message)
 	
 	return json.loads(json_data.decode("utf-8"))
@@ -318,16 +322,15 @@ def import_issues(issues):
 	num_new_comments = 0
 	new_milestones = []
 	new_labels = []
-	
 	for issue in issues:
-		
 		new_issue = {}
 		new_issue['title'] = issue['title']
 		
 		# Temporary fix for marking closed issues
 		if issue['closed_at']:
-			new_issue['title'] = "[CLOSED] " + new_issue['title']
-		
+			new_issue['state'] = 'closed'
+		else:
+			new_issue['state'] = 'open'
 		if config.getboolean('settings', 'import-comments') and 'comments' in issue and issue['comments'] != 0:
 			num_new_comments += int(issue['comments'])
 			new_issue['comments'] = get_comments_on_issue('source', issue)
@@ -366,7 +369,6 @@ def import_issues(issues):
 			new_issue['body'] = format_pull_request(template_data)
 		else:
 			new_issue['body'] = format_issue(template_data)
-		
 		new_issues.append(new_issue)
 	
 	state.current = state.IMPORT_CONFIRMATION
@@ -391,7 +393,6 @@ def import_issues(issues):
 	
 	result_issues = []
 	for issue in new_issues:
-		
 		if 'milestone_object' in issue:
 			issue['milestone'] = issue['milestone_object']['number']
 			del issue['milestone_object']
@@ -402,6 +403,10 @@ def import_issues(issues):
 				issue_labels.append(label['name'])
 			issue['labels'] = issue_labels
 			del issue['label_objects']
+
+		g = Github('aeb90ca538aa18f9c18d783f127e143a588e86b7')
+		# g = Github('63f7a8622820aa8e132e860b84be3522a0caec46')
+		repo = g.get_repo('fleetdm-importer/import-test-2')
 		
 		result_issue = send_request('target', "issues", issue)
 		print("Successfully created issue '%s'" % result_issue['title'])
@@ -409,8 +414,16 @@ def import_issues(issues):
 		if 'comments' in issue:
 			result_comments = import_comments(issue['comments'], result_issue['number'])		
 			print(" > Successfully added", len(result_comments), "comments.")
+
+		if issue['state'] == 'closed':
+			result_issue['state'] = 'closed'
 		
 		result_issues.append(result_issue)
+
+	for issue in result_issues:
+		if issue['state'] == 'closed':
+			new_issue = repo.get_issue(number=issue['number'])
+			new_issue.edit(state='closed')
 	
 	state.current = state.IMPORT_COMPLETE
 	
